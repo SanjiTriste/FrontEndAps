@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Sistema de Tarefas</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <h1>Minhas Tarefas</h1>
+            <div class="nav-actions">
+                <span id="userName" class="user-name"></span>
+                <button id="logoutBtn" class="btn btn-secondary">Sair</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <!-- Mensagem de erro/sucesso -->
+        <div id="message" class="message hidden"></div>
+
+        <!-- Seção de criação de tarefa -->
+        <div class="task-create-section">
+            <h2>Nova Tarefa</h2>
+            <form id="taskForm" class="task-form">
+                <div class="form-row">
+                    <div class="form-group flex-grow">
+                        <input type="text" id="taskTitle" placeholder="Título da tarefa" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="addTaskBtn">
+                        Adicionar
+                    </button>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-grow">
+                        <textarea id="taskDescription" placeholder="Descrição (opcional)" rows="3"></textarea>
+                    </div>
+                    <div class="form-group" style="min-width: 200px;">
+                        <label for="taskDeadline" style="font-size: 0.85rem; color: var(--text-secondary);">Prazo (opcional)</label>
+                        <input type="datetime-local" id="taskDeadline">
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Filtros -->
+        <div class="filters">
+            <button class="filter-btn active" data-filter="all">
+                Todas (<span id="countAll">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="pending">
+                Pendentes (<span id="countPending">0</span>)
+            </button>
+            <button class="filter-btn" data-filter="completed">
+                Concluídas (<span id="countCompleted">0</span>)
+            </button>
+        </div>
+
+        <!-- Lista de tarefas -->
+        <div class="tasks-section">
+            <div id="tasksList" class="tasks-list">
+                <!-- Tarefas serão inseridas aqui dinamicamente -->
+            </div>
+            <div id="emptyState" class="empty-state hidden">
+                <p>📋 Nenhuma tarefa encontrada</p>
+                <p class="empty-subtitle">Crie sua primeira tarefa acima!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Edição -->
+    <div id="editModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Editar Tarefa</h2>
+                <button class="close-modal" id="closeModal">&times;</button>
+            </div>
+            <form id="editTaskForm">
+                <div class="form-group">
+                    <label for="editTaskTitle">Título</label>
+                    <input type="text" id="editTaskTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="editTaskDescription">Descrição</label>
+                    <textarea id="editTaskDescription" rows="4"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="editTaskDeadline">Prazo</label>
+                    <input type="datetime-local" id="editTaskDeadline">
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" id="cancelEdit">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        Salvar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Script de comunicação com o servidor -->
+    <script src="js/scripts.js"></script>
+    <script>
+        // Estado da aplicação
+        let currentFilter = 'all';
+        let currentEditId = null;
+
+        // Inicializa o dashboard
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Verifica autenticação
+            if (!Auth.isAuthenticated()) {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            // Carrega dados do usuário
+            const user = Auth.getUser();
+            if (user && user.name) {
+                document.getElementById('userName').textContent = user.name;
+            }
+
+            // Event Listeners
+            setupEventListeners();
+
+            // Carrega tarefas
+            await loadTasks();
+        });
+
+        // Configura todos os event listeners
+        function setupEventListeners() {
+            // Logout
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                Auth.logout();
+                window.location.href = 'index.html';
+            });
+
+            // Criar tarefa
+            document.getElementById('taskForm').addEventListener('submit', handleCreateTask);
+
+            // Filtros
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    currentFilter = e.target.dataset.filter;
+                    renderTasks();
+                });
+            });
+
+            // Modal
+            document.getElementById('closeModal').addEventListener('click', closeEditModal);
+            document.getElementById('cancelEdit').addEventListener('click', closeEditModal);
+            document.getElementById('editTaskForm').addEventListener('submit', handleEditTask);
+
+            // Fecha modal ao clicar fora
+            document.getElementById('editModal').addEventListener('click', (e) => {
+                if (e.target.id === 'editModal') {
+                    closeEditModal();
+                }
+            });
+        }
+
+        // Carrega todas as tarefas
+        async function loadTasks() {
+            try {
+                await Tasks.fetchTasks();
+                renderTasks();
+            } catch (error) {
+                UI.showMessage('Erro ao carregar tarefas: ' + error.message, 'error');
+            }
+        }
+
+        // Renderiza as tarefas na tela
+        function renderTasks() {
+            const tasksList = document.getElementById('tasksList');
+            const emptyState = document.getElementById('emptyState');
+
+            let tasks = Tasks.getTasks();
+
+            // Aplica filtro
+            if (currentFilter === 'pending') {
+                tasks = tasks.filter(t => !t.completed);
+            } else if (currentFilter === 'completed') {
+                tasks = tasks.filter(t => t.completed);
+            }
+
+            // Atualiza contadores
+            const allTasks = Tasks.getTasks();
+            document.getElementById('countAll').textContent = allTasks.length;
+            document.getElementById('countPending').textContent = allTasks.filter(t => !t.completed).length;
+            document.getElementById('countCompleted').textContent = allTasks.filter(t => t.completed).length;
+
+            // Verifica se há tarefas
+            if (tasks.length === 0) {
+                tasksList.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+
+            // Renderiza tarefas
+            tasksList.innerHTML = tasks.map(task => {
+                const deadlineInfo = getDeadlineStatus(task.deadline);
+                
+                return `
+                <div class="task-card ${task.completed ? 'completed' : ''}" data-id="${task.id}">
+                    <div class="task-checkbox">
+                        <input 
+                            type="checkbox" 
+                            ${task.completed ? 'checked' : ''}
+                            onchange="handleToggleTask('${task.id}', this.checked)"
+                        >
+                    </div>
+                    <div class="task-content">
+                        <h3 class="task-title">${escapeHtml(task.title)}</h3>
+                        ${task.description ? `<p class="task-description">${escapeHtml(task.description)}</p>` : ''}
+                        <div class="task-meta">
+                            <small class="task-date">${formatDate(task.createdAt)}</small>
+                            ${task.deadline ? `<small class="task-deadline ${deadlineInfo.class}">${deadlineInfo.text}</small>` : ''}
+                        </div>
+                    </div>
+                    <div class="task-actions">
+                        <button class="btn-icon" onclick="openEditModal('${task.id}')" title="Editar">
+                            ✏️
+                        </button>
+                        <button class="btn-icon" onclick="handleDeleteTask('${task.id}')" title="Excluir">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // Verifica status do deadline
+        function getDeadlineStatus(deadline) {
+            if (!deadline) return { text: '', class: '' };
+            
+            const now = new Date();
+            const deadlineDate = new Date(deadline);
+            const diffTime = deadlineDate - now;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            let text = `Prazo: ${formatDeadline(deadline)}`;
+            let className = '';
+            
+            if (diffTime < 0) {
+                className = 'overdue';
+                text = `Atrasada - ${formatDeadline(deadline)}`;
+            } else if (diffDays <= 1) {
+                className = 'urgent';
+            } else if (diffDays <= 3) {
+                className = 'soon';
+            }
+            
+            return { text, class: className };
+        }
+
+        // Cria nova tarefa
+        async function handleCreateTask(e) {
+            e.preventDefault();
+
+            const title = document.getElementById('taskTitle').value.trim();
+            const description = document.getElementById('taskDescription').value.trim();
+            const deadline = document.getElementById('taskDeadline').value;
+            const btn = document.getElementById('addTaskBtn');
+
+            if (!title) return;
+
+            btn.disabled = true;
+            btn.textContent = 'Adicionando...';
+
+            try {
+                await Tasks.createTask(title, description, deadline);
+
+                // Limpa formulário
+                document.getElementById('taskTitle').value = '';
+                document.getElementById('taskDescription').value = '';
+                document.getElementById('taskDeadline').value = '';
+
+                UI.showMessage('Tarefa criada com sucesso!', 'success');
+                renderTasks();
+            } catch (error) {
+                UI.showMessage('Erro ao criar tarefa: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Adicionar';
+            }
+        }
+
+        // Alterna status de conclusão
+        async function handleToggleTask(id, completed) {
+            try {
+                await Tasks.toggleTask(id, completed);
+                UI.showMessage(`Tarefa ${completed ? 'concluída' : 'reaberta'}!`, 'success');
+                renderTasks();
+            } catch (error) {
+                UI.showMessage('Erro ao atualizar tarefa: ' + error.message, 'error');
+                renderTasks(); // Reverte UI
+            }
+        }
+
+        // Abre modal de edição
+        function openEditModal(id) {
+            const task = Tasks.getTaskById(id);
+            if (!task) return;
+
+            currentEditId = id;
+            document.getElementById('editTaskTitle').value = task.title;
+            document.getElementById('editTaskDescription').value = task.description || '';
+            
+            // Formata deadline para datetime-local
+            if (task.deadline) {
+                const date = new Date(task.deadline);
+                const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+                document.getElementById('editTaskDeadline').value = localDate.toISOString().slice(0, 16);
+            } else {
+                document.getElementById('editTaskDeadline').value = '';
+            }
+            
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        // Fecha modal de edição
+        function closeEditModal() {
+            currentEditId = null;
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        // Salva edição de tarefa
+        async function handleEditTask(e) {
+            e.preventDefault();
+
+            if (!currentEditId) return;
+
+            const title = document.getElementById('editTaskTitle').value.trim();
+            const description = document.getElementById('editTaskDescription').value.trim();
+            const deadline = document.getElementById('editTaskDeadline').value;
+
+            if (!title) {
+                UI.showMessage('Título não pode ser vazio', 'error');
+                return;
+            }
+
+            try {
+                await Tasks.updateTask(currentEditId, title, description, deadline);
+                UI.showMessage('Tarefa atualizada com sucesso!', 'success');
+                closeEditModal();
+                renderTasks();
+            } catch (error) {
+                UI.showMessage('Erro ao atualizar tarefa: ' + error.message, 'error');
+            }
+        }
+
+        // Deleta tarefa
+        async function handleDeleteTask(id) {
+            if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return;
+
+            try {
+                await Tasks.deleteTask(id);
+                UI.showMessage('Tarefa excluída com sucesso!', 'success');
+                renderTasks();
+            } catch (error) {
+                UI.showMessage('Erro ao excluir tarefa: ' + error.message, 'error');
+            }
+        }
+
+        // Funções auxiliares
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('pt-BR') + ' às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function formatDeadline(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + 
+                   ' ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Sistema de Tarefa</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>Sistema de Tarefas</h1>
+                <p>Faça login para continuar</p>
+            </div>
+            <!-- aqui eu vou fazer o erro / sucesso da aplicação-->
+            <div id="message" class="message hidden"></div>
+            <!--Formulario do cliente vai ser aqui -->
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input type="email" id="email" name="email" placeholder="email@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" name="password" placeholder="Digite sua senha" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="loginBtn">Entrar</button>
+            </form>
+            <div class="auth-footer">
+                <p>Não tem um conta?<a href="register.html"> Cadastre-se</a></p>
+            </div>
+        </div>
+    </div>
+    <!--Aqui sera Area do Script -->
+    <script src="js/scripts.js"></script>
+    <script>
+        //Iniciar a pagina de login
+        document.addEventListener('DOMContentLoaded', () => {
+            //Verificar a autenticação
+            if (Auth.isAuthenticated()) {
+                window.location.href = 'dashboard.html';
+                return;
+            }
+            // Gerencia o formulário de login
+            const form = document.getElementById('loginForm');
+            const btn = document.getElementById('loginBtn');
+            console.log(form,btn)
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                // Obtém os dados do formulário
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+
+                // Validação básica
+                if (!email || !password) {
+                    UI.showMessage('Preencha todos os campos', 'error');
+                    return;
+                }
+
+                // Desabilita o botão durante o processamento
+                btn.disabled = true;
+                btn.textContent = 'Entrando...';
+
+                try {
+                    // Realiza o login
+                    await Auth.login(email, password);
+
+                    UI.showMessage('Login realizado com sucesso!', 'success');
+
+                    // Redireciona para o dashboard após 1 segundo
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1000);
+                } catch (error) {
+                    UI.showMessage(error.message || 'Erro ao fazer login', 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Entrar';
+                }
+            });
+        });   
+    </script>
+</body>
+
+</html>

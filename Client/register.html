@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - Sistema de Tarefas</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>Sistema de Tarefas</h1>
+                <p>Crie sua conta</p>
+            </div>
+
+            <!-- Mensagem de erro/sucesso -->
+            <div id="message" class="message hidden"></div>
+
+            <!-- Formulário de Registro -->
+            <form id="registerForm" class="auth-form">
+                <div class="form-group">
+                    <label for="name">Nome Completo</label>
+                    <input 
+                        type="text" 
+                        id="name" 
+                        name="name" 
+                        placeholder="Digite seu nome completo"
+                        required
+                        minlength="3"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="email">E-mail</label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        placeholder="seu@email.com"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        placeholder="Mínimo 6 caracteres"
+                        required
+                        minlength="6"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirmar Senha</label>
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        name="confirmPassword" 
+                        placeholder="Digite a senha novamente"
+                        required
+                        minlength="6"
+                    >
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="registerBtn">
+                    Cadastrar
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                <p>Já tem uma conta? <a href="index.html">Faça login</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script de comunicação com o servidor -->
+    <script src="js/scripts.js"></script>
+    <script>
+        // Inicializa a página de registro
+        document.addEventListener('DOMContentLoaded', () => {
+            // Verifica se já está autenticado
+            if (Auth.isAuthenticated()) {
+                window.location.href = 'dashboard.html';
+                return;
+            }
+
+            // Gerencia o formulário de registro
+            const form = document.getElementById('registerForm');
+            const btn = document.getElementById('registerBtn');
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                // Obtém os dados do formulário
+                const name = document.getElementById('name').value.trim();
+                const email = document.getElementById('email').value.trim();
+                const password = document.getElementById('password').value;
+                const confirmPassword = document.getElementById('confirmPassword').value;
+
+                // Validações
+                if (!name || !email || !password || !confirmPassword) {
+                    UI.showMessage('Preencha todos os campos', 'error');
+                    return;
+                }
+
+                if (name.length < 3) {
+                    UI.showMessage('Nome deve ter no mínimo 3 caracteres', 'error');
+                    return;
+                }
+
+                if (password.length < 6) {
+                    UI.showMessage('Senha deve ter no mínimo 6 caracteres', 'error');
+                    return;
+                }
+
+                if (password !== confirmPassword) {
+                    UI.showMessage('As senhas não coincidem', 'error');
+                    return;
+                }
+
+                // Desabilita o botão durante o processamento
+                btn.disabled = true;
+                btn.textContent = 'Cadastrando...';
+
+                try {
+                    // Realiza o registro
+                    await Auth.register(name, email, password);
+                    
+                    UI.showMessage('Cadastro realizado com sucesso!', 'success');
+                    
+                    // Redireciona para login após 2 segundos
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 2000);
+                } catch (error) {
+                    UI.showMessage(error.message || 'Erro ao cadastrar usuário', 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Cadastrar';
+                }
+            });
+        });
+    </script>
+</body>
+</html>
